@@ -4,6 +4,7 @@ use std::str;
 
 use encoding::{Encoding, EncoderTrap};
 use encoding::all::ASCII;
+use chrono::Utc;
 
 
 fn main() {
@@ -83,10 +84,10 @@ fn send_file_to_client(){
     // enviar archivo, escribir en el cliente
 
     
-    let mut stream = TcpStream::connect("127.0.0.1:8081") // try!(TcpStream::connect(HOST));
+    let mut stream = TcpStream::connect("localhost:8081") // try!(TcpStream::connect(HOST));
     .expect("Couldn't connect to the server...");
 
-    let full_path = String::from("./src/shared/principal.exe");
+    let full_path = String::from("./shared/principal.exe");
 
 
     let mut file = File::open(full_path).unwrap();
@@ -104,19 +105,21 @@ fn send_file_to_client(){
      if check_ack(&mut ack_buf) != "ACK" { println!("get_file ACK Failed"); }
      println!("[get_file]: received ACK from client [3]");
 
-    let mut buf = [0u8; 8];
+    let mut buf = [0u8; 8192];
 
     let mut remaining_data = file_size as i32;
+    let ini = Utc::now();
     while remaining_data != 0 {
 
-        if remaining_data >=8 {
+        if remaining_data >=8192 {
 
             let file_slab = file.read(&mut buf);
             match file_slab{
                 Ok(n) => {
                     stream.write_all(&buf).unwrap();
-                    println!("sent {} file bytes (big)", n);
                     remaining_data = remaining_data - n as i32;
+                    println!("sent {} file bytes (big) | remaining: {}", n, remaining_data);
+
                 }
                 _ => {}
             }
@@ -126,14 +129,18 @@ fn send_file_to_client(){
                 //client must shrink this last buffer
                 Ok(n) => {
                     stream.write_all(&buf).unwrap();
-                    println!("sent {} file bytes (small)", n);
                     remaining_data = remaining_data - n as i32;
+                    println!("sent {} file bytes (small) | remaining: {}", n, remaining_data);
                 }
                 _ => {}
             }
         }
         
     }
+    let fin = Utc::now();
+    println!("Tiempo transcurrido: {}", (fin.signed_duration_since(ini)));
+
+
 
 }
 

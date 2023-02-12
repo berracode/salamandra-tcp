@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 encoding = "0.2.33"
+chrono = "0.4.23"
+toml = "0.5.10"
+
