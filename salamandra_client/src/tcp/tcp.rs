@@ -2,10 +2,7 @@ use std::{net::TcpStream, io::{BufWriter, Write, Read, BufReader, BufRead, self}
 use std::str;
 use encoding::{EncoderTrap, all::ASCII, Encoding};
 
-use crate::config::config::Config;
-
-const BUFFERSIZE: usize = 16384;
-
+use crate::{config::config::Config, file::file::FileManager};
 
 fn my_decode_message(mut buf: &mut [u8]) -> String {
     let dirty_message: &str = str::from_utf8(buf).unwrap();
@@ -20,7 +17,7 @@ fn my_decode_message(mut buf: &mut [u8]) -> String {
 pub fn process_connection(mut stream: TcpStream, config: Config){
     println!("una nueva conexión desde {:?}", stream);
 
-    let mut connection = Connection::new(stream, config).unwrap();
+    let mut connection = Connection::new(stream, config.clone()).unwrap();
 
     let mut buf_vec: Vec<u8> = connection.read_message().unwrap().to_vec();//buf_reader.fill_buf().unwrap().to_vec(); //8192 bytes buffer
     connection.reader.consume(buf_vec.len());
@@ -41,8 +38,8 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
     let mut fullname = String::from(full_path.unwrap());
     fullname.push_str(&"principal.exe".to_string());
 
-    let mut file_buffer = BufWriter::new(File::create(fullname)
-        .unwrap_or_else(|error|{panic!("Error creando archivo: {}", error)}));
+    let mut file_manager = FileManager::new(fullname, config.clone()).unwrap();
+
 
      //receive file itself (write to file)
      let mut remaining_data = file_size.parse::<i32>().unwrap();
@@ -62,8 +59,10 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
 
                     println!("datos recibidos {:?}", slab.len());
 
-                    file_buffer.write(&mut slab).unwrap();
-                    file_buffer.flush().unwrap();
+                    file_manager.write_file(slab);
+
+                    //file_buffer.write(&mut slab).unwrap();
+                    //file_buffer.flush().unwrap();
                     remaining_data = remaining_data - n as i32;
                     println!("wrote {} bytes to file | remaining_data: {}", n, remaining_data);
                 }
@@ -81,8 +80,11 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
                     //caused by not using
                     //subprocess call on 
                     //the server
-                    file_buffer.write(&mut r_slice).unwrap();
-                    file_buffer.flush().unwrap();
+                    let r = r_slice.to_vec();
+                    file_manager.write_file(r);
+
+                    //file_buffer.write(&mut r_slice).unwrap();
+                    //file_buffer.flush().unwrap();
                     println!("wrote {} bytes to file (small)", remaining_data as i32);
                     remaining_data = 0;
                 }
@@ -129,20 +131,6 @@ fn encode_message(cmd: &str) -> Result <Vec<u8>, Box<dyn error::Error + Send + S
     Ok(message_bytes)
 }
 
-fn decode_message_size(mut ack_buf: &mut [u8]) -> String {
-    let msg_len_slice: &str = str::from_utf8(&mut ack_buf).unwrap();
-    println!("msg_len_slice {:?}", msg_len_slice);
-    let mut msg_len_str = msg_len_slice.to_string();
-    let mut numeric_chars = 0;
-    for c in msg_len_str.chars() {
-        if c.is_numeric() == true {
-            numeric_chars = numeric_chars + 1;
-        }
-    }
-    //shrink:
-    msg_len_str.truncate(numeric_chars);
-    msg_len_str
-}
 
 #[derive(Debug)]
 pub struct Connection{
