@@ -1,4 +1,4 @@
-use std::{net::TcpStream, io::{BufWriter, Write, Read, BufReader, BufRead, self}, fs::File, error, fmt::Error};
+use std::{net::TcpStream, io::{BufWriter, Write, Read, BufReader, BufRead, self}, fs::File, error, fmt::Error, pin::Pin, time::Duration, thread};
 use std::str;
 use encoding::{EncoderTrap, all::ASCII, Encoding};
 
@@ -17,7 +17,7 @@ fn my_decode_message(mut buf: &mut [u8]) -> String {
 pub fn process_connection(mut stream: TcpStream, config: Config){
     println!("una nueva conexión desde {:?}", stream);
 
-    let mut connection = Connection::new(stream, config.clone()).unwrap();
+    let mut connection = Connection::new(stream, config.clone());
 
     let mut buf_vec: Vec<u8> = connection.read_message().unwrap().to_vec();//buf_reader.fill_buf().unwrap().to_vec(); //8192 bytes buffer
     connection.reader.consume(buf_vec.len());
@@ -125,38 +125,45 @@ fn encode_message(cmd: &str) -> Result <Vec<u8>, Box<dyn error::Error + Send + S
 
 #[derive(Debug)]
 pub struct Connection{
-    pub stream: TcpStream,
     pub config: Config,
-    pub reader: BufReader<TcpStream>,
-    pub writer: BufWriter<TcpStream>
+    pub reader: BufReader<&'static TcpStream>,
+    pub writer: BufWriter<&'static TcpStream>,
+    pub stream: Pin<Box<TcpStream>>,
+
 
 }
 
 impl Connection {
 
-    pub fn new(stream:  TcpStream, config: Config) -> io::Result<Self>{
+    pub fn new(stream:  TcpStream, config: Config) -> Self{
         let buffer_size = config.client.buffer_size.into();
-        let reader = BufReader::with_capacity(buffer_size, stream.try_clone()?);
-        let writer = BufWriter::with_capacity(buffer_size, stream.try_clone()?);
+        //let reader = BufReader::with_capacity(buffer_size, stream.try_clone()?);
+        //let writer = BufWriter::with_capacity(buffer_size, stream.try_clone()?);
 
-        Ok(Self{
-            stream,
-            config,
-            reader,
-            writer
+        let pin = Box::pin(stream);
+        unsafe {
+            Self{
+                config,
+                reader: BufReader::with_capacity(buffer_size,std::mem::transmute(&*pin)),
+                writer: BufWriter::with_capacity(buffer_size,std::mem::transmute(&*pin)),
+                stream: pin,
+            }
+        }
 
-        })
+
     }
+
+
 
     pub fn send_message(&mut self) {
           //send ack
         let ack = encode_message("ACK").unwrap();
         //send ack
-        println!("self: {:?}", self.writer);
         self.writer.write_all(&ack).unwrap();
         self.writer.flush().unwrap();
         println!("[client Enviando] ACKS");
 
+        
     }
 
     pub fn read_message(&mut self) -> Result<&[u8], io::Error>{
