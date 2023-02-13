@@ -1,0 +1,12 @@
+[client]
+
+listen = {ip = "127.0.0.1", port = "9090"}
+name = "salamandra_client"
+
+route_down = "./shared/"
+
+# valores entre 1024 bytes hasta 16384 8192 1048576
+# 1KB = 1_024 B, 16KB = 16_384 B, 8 KB= 8_192 B
+# 1 MB = 1024*1024 = 1_048_576, 0.5 MB = 524_288
+
+buffer_size = 524_288
