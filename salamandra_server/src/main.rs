@@ -84,7 +84,7 @@ fn send_file_to_client(){
     // enviar archivo, escribir en el cliente
 
     
-    let mut stream = TcpStream::connect("localhost:8081") // try!(TcpStream::connect(HOST));
+    let mut stream = TcpStream::connect("192.168.1.161:9090") // try!(TcpStream::connect(HOST));
     .expect("Couldn't connect to the server...");
 
     let full_path = String::from("./shared/principal.exe");
@@ -103,15 +103,15 @@ fn send_file_to_client(){
      //receive ack
      stream.read(&mut ack_buf).unwrap();
      if check_ack(&mut ack_buf) != "ACK" { println!("get_file ACK Failed"); }
-     println!("[get_file]: received ACK from client [3]");
+     println!("[recibido] ACK");
 
-    let mut buf = [0u8; 8192];
+    let mut buf = [0u8; 16384];
 
     let mut remaining_data = file_size as i32;
     let ini = Utc::now();
     while remaining_data != 0 {
 
-        if remaining_data >=8192 {
+        if remaining_data >= 16384 {
 
             let file_slab = file.read(&mut buf);
             match file_slab{
@@ -128,7 +128,10 @@ fn send_file_to_client(){
             match file_slab {
                 //client must shrink this last buffer
                 Ok(n) => {
-                    stream.write_all(&buf).unwrap();
+
+                    let mut r_slice = &buf[0..(remaining_data as usize)]; //fixes underreading
+
+                    stream.write_all(&r_slice).unwrap();
                     remaining_data = remaining_data - n as i32;
                     println!("sent {} file bytes (small) | remaining: {}", n, remaining_data);
                 }

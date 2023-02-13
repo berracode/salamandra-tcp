@@ -5,5 +5,5 @@ name = "salamandra_client"
 
 route_down = "./shared/"
 
-# valores entre 1024 bytes hasta 16384
-buffer_size = 8192
+# valores entre 1024 bytes hasta 16384 8192
+buffer_size = 16384
