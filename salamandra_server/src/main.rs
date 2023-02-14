@@ -6,7 +6,7 @@ use encoding::{Encoding, EncoderTrap};
 use encoding::all::ASCII;
 use chrono::Utc;
 
-const BUFFER_SIZE: usize = 1048576/2;
+const BUFFER_SIZE: usize = 51_200;
 
 fn main() {
     println!("Hello, world server!");
@@ -85,7 +85,7 @@ fn send_file_to_client(){
     // enviar archivo, escribir en el cliente
 
     
-    let mut stream = TcpStream::connect("192.168.1.152:9090") // try!(TcpStream::connect(HOST));
+    let mut stream = TcpStream::connect("192.168.1.161:9090") // try!(TcpStream::connect(HOST));
     .expect("Couldn't connect to the server...");
 
     let full_path = String::from("./shared/principal.exe");

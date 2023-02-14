@@ -1,4 +1,4 @@
-# Salamandra-tcp
+# Salamandra tcp
 
 This is a personal project for fun. I wanted to do a broadcast using TCP sockets in Rust lang.
 
@@ -6,7 +6,14 @@ My idea was build two programs, one that would send binary files or text files (
 
 The client would be installed in various computers.
 
+In this image you can see th currect model or at least the model that I wanted achieves. Here the server send data to clients without previous negotiation and over TCP. 
 ![alt text](./img/broadcast.png)
+
+
+In this other imagen is the model I want to reach
+![alt text](./img/new_model_using_HTTP.png)
+
+
 
 # Features
 
@@ -22,4 +29,3 @@ The client would be installed in various computers.
 - [ ] CLI with some commands
 - [ ] HTTP, TLS, SSL 
 
-# Usage

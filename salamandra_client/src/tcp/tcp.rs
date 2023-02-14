@@ -1,6 +1,8 @@
-use std::{net::TcpStream, io::{BufWriter, Write, Read, BufReader, BufRead, self}, fs::File, error, fmt::Error, pin::Pin, time::Duration, thread};
+use std::{net::TcpStream, io::{BufWriter, Write, Read, BufReader, BufRead, self}, fs::File, error, fmt::Error, pin::Pin, time::Duration, thread, cmp::min};
 use std::str;
+
 use encoding::{EncoderTrap, all::ASCII, Encoding};
+use indicatif::{ProgressBar, ProgressState, ProgressStyle };
 
 use crate::{config::config::Config, file::file::FileManager};
 
@@ -41,7 +43,26 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
 
     //receive file itself (write to file)
     let mut remaining_data = file_size.parse::<i32>().unwrap();
+    let mut read_data = 0;
+    let total_size = remaining_data;
+    let bar = ProgressBar::new(remaining_data.try_into().unwrap());
+    bar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:40.green/white} {pos:>7}/{len:7} ({eta}) {msg}")
+    .unwrap()
+    .with_key("eta", |state: &ProgressState, w: &mut dyn std::fmt::Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
+    .progress_chars("##-"));
+    /*bar
+        .set_style(
+            ProgressStyle
+                ::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                .unwrap()
+                .with_key("eta", |state: &ProgressState, w: &mut dyn std::fmt::Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
+                .progress_chars("#>-")
+        );*/
+
     while remaining_data != 0 {
+
+       
+        //thread::sleep(Duration::from_secs(2));
 
         //println!("remaining_data: {:?} >= connection.config.client.buffer_size: {:?} ", remaining_data, connection.config.client.buffer_size);
 
@@ -56,6 +77,9 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
                     // Mark the bytes read as consumed so the buffer will not return them in a subsequent read
                     connection.reader.consume(slab.len());
                     let n = slab.len();
+                    read_data = i32::try_from(n).unwrap();
+                    //println!("============datos recibidos en if {:?}", read_data);
+
 
                     //println!("datos recibidos {:?}", slab.len());
 
@@ -78,11 +102,12 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
                 Ok(_) => {
                     //let mut r_slice = &buf[0..(array_limit as usize + 1)]; //fixes underreading
                     let mut slab: Vec<u8> = slab.unwrap().to_vec();
-                    println!("============datos recibidos en else {:?}", slab.len());
+                    read_data = i32::try_from(slab.len()).unwrap();
+                    //println!("============datos recibidos en else {:?}", read_data);
 
-                    println!("capacity: {:?}",file_manager.writer.capacity());
+                    //println!("capacity: {:?}",file_manager.writer.capacity());
                     file_manager.update_capacity(remaining_data.try_into().unwrap());
-                    println!("capacity: {:?}",file_manager.writer.capacity());
+                    //println!("capacity: {:?}",file_manager.writer.capacity());
 
                     //caused by not using
                     //subprocess call on 
@@ -92,17 +117,19 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
 
                     //file_buffer.write(&mut r_slice).unwrap();
                     //file_buffer.flush().unwrap();
-                    println!("=========wrote {} bytes to file (small)", remaining_data as i32);
+                    //println!("=========wrote {} bytes to file (small)", remaining_data as i32);
                     remaining_data = 0;
                 }
                 _ => {}
             }
         }
+
+     
+        bar.inc(read_data.try_into().unwrap());
+
+
     }
-
-
-
-
+    bar.finish();
 
 
 
