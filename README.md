@@ -7,7 +7,7 @@ My idea was build two programs, one that would send binary files or text files (
 The client would be installed in various computers.
 
 In this image you can see th currect model or at least the model that I wanted achieves. Here the server send data to clients without previous negotiation and over TCP.
-![alt text](./img/broadcast.png)
+![alt text](./img/broadcast1.png)
 
 
 In this other imagen is the model I want to reach
