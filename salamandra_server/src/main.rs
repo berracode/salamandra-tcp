@@ -1,6 +1,10 @@
+
 use actix_files::NamedFile;
 use salamandra_server::config::config::Config;
-use std::{net::{TcpListener, TcpStream}, thread, io::{BufReader, Write},  time::Duration};
+use salamandra_server::tcp::tcp;
+#[allow(unused_imports)]
+
+use std::{net::{TcpListener, TcpStream}, thread, io::{ Write}};
 use std::io::{ Result};
 use actix_web::{HttpServer, App, Responder, HttpResponse, get, web, HttpRequest};
 
@@ -22,22 +26,11 @@ async fn hello() -> impl Responder {
 }
 
 
-fn process_connection(mut stream: TcpStream, config: Config){
-    println!("un nuevo cliente conectado desde {:?}", stream);
-    thread::sleep(Duration::from_secs(10));
-    let response = "HOLA CLIENTE";
-    stream.write_all(response.as_bytes()).unwrap();
-    println!("chao {:?}", stream)
-   
-
-}
-
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let config= Config::new();
     let ip = config.get_ip();
-    let port = config.get_port();
+    let _port = config.get_port();
 
     thread::spawn(move|| {
         let listener = TcpListener::bind(config.get_listener()).unwrap();
@@ -48,7 +41,7 @@ async fn main() -> std::io::Result<()> {
 
             thread::spawn(|| {
                 let stream = stream.unwrap();
-                process_connection(stream, config);
+                tcp::process_connection(stream, config);
             });
         }
     
@@ -58,10 +51,46 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .route("/shared/{filename:.*}", web::get().to(index))
     })
-    .bind((ip, port))?
+    .bind((ip, 8080))?
     .run()
     .await
 }
 
 
+#[cfg(test)]
+mod tests {
+    use std::{io::Read, str::from_utf8};
+
+    use super::*;
+
+    #[test]
+    fn connection_client_record() {
+        let mut stream = TcpStream::connect("192.168.1.161:9123").unwrap();
+        let msg = b"client-record";
+
+        stream.write(msg).unwrap();
+
+        let mut response_data = [0 as u8; 2];
+        let mut response = 0;
+
+        match stream.read_exact(&mut response_data) {
+            Ok(_) => {
+                if &response_data == "OK".as_bytes() {
+                    println!("Reply is ok!");
+                    response = 1;
+                } else {
+                    let text = from_utf8(&response_data).unwrap();
+                    println!("Unexpected reply: {}", text);
+                }
+            },
+            Err(e) => {
+                println!("Failed to receive data: {}", e);
+            }
+        }
+
+
+        assert_eq!(1, response);
+    }
+
+}
 
