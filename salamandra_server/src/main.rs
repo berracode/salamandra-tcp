@@ -57,40 +57,4 @@ async fn main() -> std::io::Result<()> {
 }
 
 
-#[cfg(test)]
-mod tests {
-    use std::{io::Read, str::from_utf8};
-
-    use super::*;
-
-    #[test]
-    fn connection_client_record() {
-        let mut stream = TcpStream::connect("192.168.1.161:9123").unwrap();
-        let msg = b"client-record";
-
-        stream.write(msg).unwrap();
-
-        let mut response_data = [0 as u8; 2];
-        let mut response = 0;
-
-        match stream.read_exact(&mut response_data) {
-            Ok(_) => {
-                if &response_data == "OK".as_bytes() {
-                    println!("Reply is ok!");
-                    response = 1;
-                } else {
-                    let text = from_utf8(&response_data).unwrap();
-                    println!("Unexpected reply: {}", text);
-                }
-            },
-            Err(e) => {
-                println!("Failed to receive data: {}", e);
-            }
-        }
-
-
-        assert_eq!(1, response);
-    }
-
-}
 
