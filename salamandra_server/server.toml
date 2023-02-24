@@ -1,0 +1,7 @@
+[server]
+
+listen = {ip = "127.0.0.1", port = "9123"}
+name = "salamandra_server"
+
+base_route = "./shared/"
+
