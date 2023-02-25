@@ -1,4 +1,6 @@
-use std::{fs::{ OpenOptions}, io::Write, net::{SocketAddr, Ipv4Addr}};
+use std::{fs::{ OpenOptions, File}, io::{Write, self, BufReader, BufRead}, net::{SocketAddr, Ipv4Addr}, str::FromStr};
+use std::str;
+
 
 const ENTER: &str = "\r\n";
 const FILE_DATA: &str = "file_data";
@@ -20,7 +22,44 @@ pub fn save_client(new_client: SocketAddr) -> u16 {
     1
 }
 
+pub fn get_all_clients() -> io::Result<Vec<SocketAddr>> {
 
+    let mut new_client = vec![];
+    let archivo = File::open(FILE_DATA)?;
+    let buf_reader = BufReader::new(archivo);
+    for line in buf_reader.lines() {
+        match line {
+            Ok(line) => {
+                match SocketAddr::from_str(&line) {
+                    Ok(ip) =>{
+                        new_client.push(ip);
+
+                    },
+                    Err(error) => {
+                        //todo!("Printing in log file");
+                        eprintln!("Error become str in SocketAddr: {error:?} {line}")
+                    },
+                }
+            },
+            Err(error) => eprintln!("Error trying to read line {error:?}"),
+        }
+    }
+    Ok(new_client)
+}
+
+
+#[test]
+fn get_all_clients_test(){
+    let mut contain_some_ip = false;
+    let response = get_all_clients().unwrap();
+    for ip in response {
+        println!("ip: {ip:?}" );
+        contain_some_ip = true;
+    }
+
+    assert_eq!(true, contain_some_ip);
+
+}
 
 #[test]
 fn save_client_test() {
