@@ -1,29 +1,149 @@
-use std::{net::TcpStream, io::{BufWriter, Write, Read, BufReader, BufRead, self}, fs::File, error, fmt::Error, pin::Pin, time::Duration, thread, cmp::min};
+use std::{net::TcpStream, io::{BufWriter, Write, Read, BufReader, BufRead, self, Seek}, fs::File, error, fmt::{Error, format}, pin::Pin, time::Duration, thread, cmp::min};
 use std::str;
 
 use encoding::{EncoderTrap, all::ASCII, Encoding};
-use indicatif::{ProgressBar, ProgressState, ProgressStyle };
+use serde_json::json;
+
+
+use reqwest::Client;
+use indicatif::{ProgressBar, ProgressStyle};
+use futures_util::StreamExt;
+use tokio::runtime;
 
 use crate::{config::config::Config, file::file::FileManager};
+
+
+
+/// el cliente trata de enviarle al servidor sus datos para registrarse en la
+/// BD del servidor y que este pueda enviarle la url
+pub fn try_sing_in(config: Config) {
+
+    loop {
+        let stream = TcpStream::connect("192.168.1.161:9123");
+        match stream {
+            Ok(stream) => {
+                let mut connection = Connection::new(stream, config.clone());
+ 
+                let request = json!({
+                    "operation": "client-record",
+                    "data":config.get_listener()
+                });
+                connection.send_message(request.to_string().as_str());
+                let mut buf_vec: Vec<u8> = connection.read_message().unwrap().to_vec();
+                connection.reader.consume(buf_vec.len());
+                let responsa_message = my_decode_message(&mut buf_vec);
+
+                if responsa_message.eq_ignore_ascii_case("OK") {
+                    break;
+                }
+
+            },
+            Err(error) => {
+                eprintln!("Error: {error}");
+            },
+        }
+        thread::sleep(Duration::from_secs(5));
+        println!("Reintantando...")
+
+ 
+    }
+}
+
 
 fn my_decode_message(mut buf: &mut [u8]) -> String {
     let dirty_message: &str = str::from_utf8(buf).unwrap();
     let clean_message: String = dirty_message.chars().filter(|message_byte|{
-        message_byte.is_numeric() == true 
+        message_byte.is_ascii_graphic() == true 
     }).collect();
 
     println!("clean {}",clean_message);
     clean_message
 }
 
-pub fn process_connection(mut stream: TcpStream, config: Config){
+
+pub async fn download_file(client: &Client, url: &str, path: &str) -> Result<(), String> {
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .or(Err(format!("Failed to GET from '{}'", &url)))?;
+    let total_size = res
+        .content_length()
+        .ok_or(format!("Failed to get content length from '{}'", &url))?;
+
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.white/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .progress_chars("█  "));
+    pb.set_message(&format!("Downloading {}", url));
+
+    let mut file;
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+    
+    println!("Seeking in file.");
+    if std::path::Path::new(path).exists() {
+        println!("File exists. Resuming.");
+        file = std::fs::OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+
+        let file_size = std::fs::metadata(path).unwrap().len();
+        file.seek(std::io::SeekFrom::Start(file_size)).unwrap();
+        downloaded = file_size;
+
+    } else {
+        println!("Fresh file..");
+        file = File::create(path).or(Err(format!("Failed to create file '{}'", path)))?;
+    }
+
+    println!("Commencing transfer");
+    while let Some(item) = stream.next().await {
+        let chunk = item.or(Err(format!("Error while downloading file")))?;
+        file.write(&chunk)
+            .or(Err(format!("Error while writing to file")))?;
+        let new = min(downloaded + (chunk.len() as u64), total_size);
+        downloaded = new;
+        pb.set_position(new);
+    }
+
+    pb.finish_with_message(&format!("Downloaded {} to {}", url, path));
+    return Ok(());
+}
+
+pub async fn process_connection(mut stream: TcpStream, config: Config) {
     println!("una nueva conexión desde {:?}", stream);
 
     let mut connection = Connection::new(stream, config.clone());
 
+
+
+    //tratar de registrarse en el server
+
     let mut buf_vec: Vec<u8> = connection.read_message().unwrap().to_vec();//buf_reader.fill_buf().unwrap().to_vec(); //8192 bytes buffer
     connection.reader.consume(buf_vec.len());
     println!("buf_vec {:?}", buf_vec.len());
+    let responsa_message = my_decode_message(&mut buf_vec);
+    println!("response_message: {}", responsa_message);
+
+    let rt = runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(8 * 1024 * 1024)
+        .worker_threads(2)
+        .max_blocking_threads(2)
+        .build().unwrap();
+
+    println!("con runtime");
+    rt.spawn( async move  {
+        let mut client = reqwest::Client::new();
+        download_file(&client, responsa_message.as_str(), "./shared/android.tar.gz").await.unwrap();
+    }).await.unwrap();
+
+    
+
+    //FUNCION DESCARGAR ARCHIVO
 
     // Mark the bytes read as consumed so the buffer will not return them in a subsequent read
     // buf_reader.consume(buf_vec.len());
@@ -31,7 +151,7 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
     let file_size = my_decode_message(&mut buf_vec);
     println!("file_size {:?}", file_size);
 
-    connection.send_message();
+    //connection.send_message();
 
     let mut full_path = connection.get_route();
 
@@ -46,10 +166,7 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
     let mut read_data = 0;
     let total_size = remaining_data;
     let bar = ProgressBar::new(remaining_data.try_into().unwrap());
-    bar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:40.green/white} {pos:>7}/{len:7} ({eta}) {msg}")
-    .unwrap()
-    .with_key("eta", |state: &ProgressState, w: &mut dyn std::fmt::Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
-    .progress_chars("##-"));
+
     /*bar
         .set_style(
             ProgressStyle
@@ -182,9 +299,9 @@ impl Connection {
 
 
 
-    pub fn send_message(&mut self) {
-          //send ack
-        let ack = encode_message("ACK").unwrap();
+    pub fn send_message(&mut self, message: &str) {
+        println!("message to server: {}", message);
+        let ack = encode_message(message).unwrap();
         //send ack
         self.writer.write_all(&ack).unwrap();
         self.writer.flush().unwrap();
@@ -204,9 +321,51 @@ impl Connection {
         let route = client.route_down;
         route
     }
-
-
-
-
     
+}
+
+/// Con este test simulamos que el servidor le envia al cliente la URL para descargar archivo.
+#[test]
+fn connection_broadcats() {
+    let mut stream = TcpStream::connect("192.168.1.161:9090").unwrap();
+    let config= Config::new();
+    let mut conn_server = Connection::new(stream, config);
+
+    let msg = "http://192.168.1.161:8080/shared/android.tar.gz";
+    conn_server.send_message(msg);
+
+    /*stream.write(msg).unwrap();
+
+    let mut response_data = [0 as u8; 47];
+    let mut response = 0;
+
+    match stream.read_exact(&mut response_data) {
+        Ok(_) => {
+            if response_data.starts_with(b"http") {
+                let text = from_utf8(&response_data).unwrap();
+                println!("text {text}");
+                println!("INiciando descarga...");
+                thread::sleep(Duration::from_secs(10));
+                stream.write(b"ok").unwrap();
+                response_data.fill_with(Default::default);
+                println!("response_data {:?}", response_data);
+
+                stream.read(&mut response_data).unwrap();
+                let text = from_utf8(&response_data).unwrap();
+                println!("text 2 {text}");
+                
+                println!("Reply is ok!");
+                response = 1;
+            } else {
+                let text = from_utf8(&response_data).unwrap();
+                println!("Unexpected reply: {}", text);
+            }
+        },
+        Err(e) => {
+            println!("Failed to receive data: {}", e);
+        }
+    }*/
+
+
+    assert_eq!(1, 1);
 }

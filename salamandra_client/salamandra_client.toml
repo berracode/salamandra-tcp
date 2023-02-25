@@ -9,4 +9,4 @@ route_down = "./shared/"
 # 1KB = 1_024 B, 16KB = 16_384 B, 8 KB= 8_192 B
 # 1 MB = 1024*1024 = 1_048_576, 0.5 MB = 524_288
 # 
-buffer_size = 51_200
+buffer_size = 512
