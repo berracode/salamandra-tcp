@@ -113,7 +113,7 @@ pub async fn download_file(client: &Client, url: &str, path: &str) -> Result<(),
     return Ok(());
 }
 
-pub async fn process_connection(mut stream: TcpStream, config: Config) {
+pub fn process_connection(mut stream: TcpStream, config: Config) {
     println!("una nueva conexión desde {:?}", stream);
 
     let mut connection = Connection::new(stream, config.clone());
@@ -128,7 +128,7 @@ pub async fn process_connection(mut stream: TcpStream, config: Config) {
     let responsa_message = my_decode_message(&mut buf_vec);
     println!("response_message: {}", responsa_message);
 
-    let rt = runtime::Builder::new_multi_thread()
+    let rt = runtime::Builder::new_current_thread()
         .enable_all()
         .thread_stack_size(8 * 1024 * 1024)
         .worker_threads(2)
@@ -136,17 +136,14 @@ pub async fn process_connection(mut stream: TcpStream, config: Config) {
         .build().unwrap();
 
     println!("con runtime");
-    rt.spawn( async move  {
+    rt.block_on( async move  {
         let mut client = reqwest::Client::new();
         download_file(&client, responsa_message.as_str(), "./shared/android.tar.gz").await.unwrap();
-    }).await.unwrap();
+    });
 
     
 
     //FUNCION DESCARGAR ARCHIVO
-
-    // Mark the bytes read as consumed so the buffer will not return them in a subsequent read
-    // buf_reader.consume(buf_vec.len());
 
     let file_size = my_decode_message(&mut buf_vec);
     println!("file_size {:?}", file_size);

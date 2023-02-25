@@ -2,14 +2,13 @@ use std::{net::{TcpListener}, thread, sync::Arc};
 use salamandra_client::{config::config::Config, tcp::tcp};
 
 
-#[tokio::main]
-async fn main() {
+fn main() {
     println!("Hello, world client!");
-    start_server().await;
+    start_server();
 
 }
 
-async fn start_server(){
+fn start_server(){
 
     let config= Config::new();
 
@@ -22,7 +21,7 @@ async fn start_server(){
         let config = config.clone();
         //thread::spawn(move || {
             let stream = stream.unwrap();
-            tcp::process_connection(stream, config).await;
+            tcp::process_connection(stream, config);
         //});
     }
     println!("LLEGO")
