@@ -1091,6 +1091,7 @@ dependencies = [
  "encoding",
  "local-ip-address",
  "serde",
+ "serde_json",
  "toml",
 ]
 

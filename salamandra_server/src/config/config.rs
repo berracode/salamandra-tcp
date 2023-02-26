@@ -22,6 +22,9 @@ pub struct Server {
     pub name: Option<String>,
 
     pub base_route: Option<String>,
+    
+    pub buffer_size: usize
+
 
 }
 

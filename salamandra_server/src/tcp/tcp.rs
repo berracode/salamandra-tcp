@@ -2,12 +2,19 @@
 #[allow(unused_imports)]
 
 use std::{net::{TcpStream, Shutdown}, time::Duration, thread, io::{Write, Read}};
-use std::{str, fs::{self, File}, error};
+use std::{str::{self, FromStr}, fs::{self, File}, error, net::SocketAddr, io::BufRead, sync::mpsc};
 use encoding::{all::ASCII, EncoderTrap, Encoding};
+use serde::{Serialize, Deserialize};
 
-use crate::{config::config::Config, file::file_manager};
+use crate::{config::config::Config, file::file_manager, tcp::connection::{Connection, self}};
 
 const BASE_URL: &str = "http://192.168.1.161:8080/";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Request{
+    operation: String,
+    data: Option<String>
+}
 
 fn my_decode_message(buf: &mut [u8]) -> String {
     let dirty_message: &str = str::from_utf8(buf).unwrap();
@@ -34,13 +41,13 @@ fn encode_message(cmd: &str) -> Result <Vec<u8>, Box<dyn error::Error + Send + S
 /// enviar trama tcp con la url a cada cliente
 /// recibir trama de confirmación cuando el cliente termine de descarga el archivo
 /// responder a la CLI que ya el cliente x1 terminó
-fn broadcast(mut stream: &TcpStream, config: Config){
+fn broadcast(connection: &Connection){
 
     //validar que exista archivo en base_route
     let mut file_to_send = "";
     let mut fullpath = "".to_string();
 
-    for entry in fs::read_dir(config.server.base_route.unwrap()).unwrap() {
+    for entry in fs::read_dir(connection.base_route().unwrap()).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
         if !path.is_dir() {
@@ -61,85 +68,98 @@ fn broadcast(mut stream: &TcpStream, config: Config){
             let partial = format!("{}  [{:?} bytes]", trimmed, file_size);
             println!("{:?}", partial);
 
-
-            /*for c in partial.chars()
-            {
-                //load the buffer
-                ls_bytes.push(c as u8);
-            }
-            ls_bytes.push('\n' as u8);*/
         }
     }
     file_to_send = &fullpath[2..];
 
     println!("file_to_send {}", file_to_send);
 
-    let mut url = format!("{BASE_URL}{file_to_send}");
+    let url = format!("{BASE_URL}{file_to_send}");
     println!("url {url}");
 
     //leer clientes del file_data
-    let mut clients = file_manager::get_all_clients().unwrap();
-    let mut buf = [0 as u8; 20];
+    let clients = file_manager::get_all_clients().unwrap();
+    let config = connection.config.clone();
+
+    let mut threads = vec![];
+    let (tx, rx) = mpsc::channel();
 
     for client in clients {
-        println!("Hay que hacer la conexión tcp en hilos, hacia los clientes tcp que se registraron en el server
-        pero con fines de testing se lo enviare al mismo que me envia");
 
+        let url_clone = url.clone();
+        let config = config.clone();
+        let tx_n = tx.clone();
 
-        stream.write_all(url.as_bytes()).unwrap();
-        println!("[SERVER] URL base enviada a cliente {client}");
+        let thread = thread::spawn( move || {
 
-        loop{
-            stream.read(&mut buf).unwrap();
-            if buf.len() > 0 {
-                let msg = my_decode_message(&mut buf);
-                println!("msg in loop fake {}", msg );
+            let stream = TcpStream::connect(client).unwrap(); //el cliente
+            let mut connection = Connection::new(stream, config);
+            connection.send_message(url_clone.as_str()); //enviadno url al cliente
+            let mut response_byte = connection.read_message().unwrap().to_vec();
+            connection.reader.consume(response_byte.len());
+            let response_from_client = connection::decode_message(&mut response_byte);
+            println!("response_from_client: {}", response_from_client);
 
-                break;
+            if response_from_client.eq_ignore_ascii_case("downloaded") {
+                println!("Termina {:?}", connection.stream);
+                tx_n.send(connection.stream).unwrap();
+
             }
-        }
 
-        //respuesta CLI
-        stream.write_all(b"CLI el cliente descargo el archivo").unwrap();  
-        
+        });
 
+        threads.push(thread);
     }
 
+    while threads.len() > 0 {
+        let cur_thread = threads.remove(0); // moves it into cur_thread
+        
+        for received in rx.recv() {
+            println!("termina: {:?}", received);
+        }
+        cur_thread.join().unwrap();
+    }
 
+    
 
-
+    println!("fin BROACASTING...")
 }
 
 
-pub fn process_connection(mut stream: TcpStream, config: Config){
+pub fn process_connection(stream: TcpStream, config: Config){
     println!("New client connected from {:?}", stream);
 
-    let new_client = stream.peer_addr().unwrap();
-    let mut buf = [0 as u8; 20];
+    let mut connection =  Connection::new(stream, config);
 
 
-    stream.read(&mut buf).unwrap();
-    let msg = my_decode_message(&mut buf);
+    let mut buf_vec: Vec<u8> = connection.read_message().unwrap().to_vec();
+    connection.reader.consume(buf_vec.len());
+    let request = connection::decode_message(&mut buf_vec);
+
+    let req: Request = serde_json::from_str(&request).unwrap();
+
+    println!("req: {:?}", req);
     let mut response = "NO";
 
-    if msg.as_bytes() == "client-record".as_bytes() {
-        // debemos escribir en archivo de texto al cliente registrado. y responder registro exitoso.
+    if req.operation.eq_ignore_ascii_case("client-record") {
         println!("Saving client in file...");
+ 
+        let new_client = SocketAddr::from_str(req.data.unwrap().as_str()).unwrap();        
         let is_saved =  file_manager::save_client(new_client);
 
         if is_saved == 1 {
             response = "OK";
         }
 
-    } else if msg.as_bytes() == "broadcast".as_bytes() {
-        broadcast(&stream, config);
+    } else if req.operation.eq_ignore_ascii_case("broadcast") {
+        broadcast(&connection);
         response = "OK";
         
     }
 
    
-    stream.write_all(response.as_bytes()).unwrap();
-    println!("A client has been finished {:?}", stream)
+    connection.send_message(response);
+    println!("A client has been finished {:?}", connection.stream)
    
 
 }
@@ -150,47 +170,29 @@ pub fn process_connection(mut stream: TcpStream, config: Config){
 mod tests {
     use std::{io::Read, str::from_utf8};
 
+    use serde_json::json;
+
     use super::*;
 
     #[test]
-    fn connection_broadcats() {
+    fn connection_broadcats_from_cli() {
         let mut stream = TcpStream::connect("192.168.1.161:9123").unwrap();
-        let msg = b"broadcast";
+        let config= Config::new();
 
-        stream.write(msg).unwrap();
+        let mut connection = Connection::new(stream, config);
 
-        let mut response_data = [0 as u8; 47];
-        let mut response = 0;
+        let request = json!({
+            "operation": "broadcast",
+            "data":"null"
+        });
+        connection.send_message(request.to_string().as_str()); //cli manda el mensaje broacdast al server
 
-        match stream.read_exact(&mut response_data) {
-            Ok(_) => {
-                if response_data.starts_with(b"http") {
-                    let text = from_utf8(&response_data).unwrap();
-                    println!("text {text}");
-                    println!("INiciando descarga...");
-                    thread::sleep(Duration::from_secs(10));
-                    stream.write(b"ok").unwrap();
-                    response_data.fill_with(Default::default);
-                    println!("response_data {:?}", response_data);
+        let mut response_byte = connection.read_message().unwrap().to_vec();
+        connection.reader.consume(response_byte.len());
+        let response_from_server = connection::decode_message(&mut response_byte);
+        println!("response_from_server: {}", response_from_server);
 
-                    stream.read(&mut response_data).unwrap();
-                    let text = from_utf8(&response_data).unwrap();
-                    println!("text 2 {text}");
-                    
-                    println!("Reply is ok!");
-                    response = 1;
-                } else {
-                    let text = from_utf8(&response_data).unwrap();
-                    println!("Unexpected reply: {}", text);
-                }
-            },
-            Err(e) => {
-                println!("Failed to receive data: {}", e);
-            }
-        }
-
-
-        assert_eq!(1, response);
+        assert_eq!(String::from("OK"), response_from_server);
     }
 
 

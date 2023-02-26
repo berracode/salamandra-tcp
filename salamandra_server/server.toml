@@ -5,3 +5,5 @@ name = "salamandra_server"
 
 base_route = "./shared/"
 
+buffer_size = 512
+
