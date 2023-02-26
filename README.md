@@ -6,7 +6,7 @@ My idea was build two programs, one that would send binary files or text files (
 
 The client would be installed in various computers.
 
-In this image you can see th currect model or at least the model that I wanted achieves. Here the server send data to clients without previous negotiation and over TCP.
+In this image you can see th first model or at least the model that I wanted achieves. Here the server send data to clients without previous negotiation and over TCP.
 ![alt text](./img/broadcast1.png)
 
 
@@ -19,13 +19,14 @@ In this other imagen is the model I want to reach
 
 - [x] server able to send binary files
 - [x] client able to receive binary files
-- [ ] multiple receivers
+- [x] multiple receivers
+- [ ] multiple files to be send
 - [ ] data integrity in all case
-- [ ] server config file (parameterizable)
+- [x] server config file (parameterizable)
 - [x] client config file (parameterizable) 
 - [ ] data encryption
-- [x] communication protocol over tcp
-- [ ] automatic client register in server (signs of life from clients)
+- [x] communication protocol over tcp and http
+- [x] automatic client register in server (signs of life from clients)
 - [ ] CLI with some commands
-- [ ] HTTP, TLS, SSL 
+- [ ] TLS, SSL 
 
