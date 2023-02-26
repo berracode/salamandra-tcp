@@ -3,8 +3,6 @@ use std::{io::{BufReader, BufWriter, self, Write}, fs::File};
 use crate::config::config::Config;
 
 
-
-
 pub struct FileManager {
     pub reader: BufReader<File>,
     pub writer: BufWriter<File>,
@@ -31,7 +29,6 @@ impl FileManager {
     }
 
     pub fn write_file(&mut self, mut buf: Vec<u8>) {
-        let n = buf.len();
 
         //println!("datos a escribir write {:?}", buf.len());
 

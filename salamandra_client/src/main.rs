@@ -1,4 +1,4 @@
-use std::{net::{TcpListener}, thread, sync::Arc};
+use std::{net::{TcpListener}, thread};
 use salamandra_client::{config::config::Config, tcp::tcp};
 
 
@@ -19,10 +19,10 @@ fn start_server(){
     for stream in listener.incoming() {
 
         let config = config.clone();
-        //thread::spawn(move || {
+        thread::spawn(move || {
             let stream = stream.unwrap();
             tcp::process_connection(stream, config);
-        //});
+        });
     }
     println!("LLEGO")
 }
