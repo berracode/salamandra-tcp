@@ -1,7 +1,5 @@
-use encoding::{all::ASCII, EncoderTrap, Encoding};
 use serde::{Deserialize, Serialize};
 use std::{
-    error,
     fs::{self, File},
     io::BufRead,
     net::SocketAddr,
@@ -35,28 +33,6 @@ enum Operation {
     Broadcast,
 }
 
-fn my_decode_message(buf: &mut [u8]) -> String {
-    let dirty_message: &str = str::from_utf8(buf).unwrap();
-    let clean_message: String = dirty_message
-        .chars()
-        .filter(|message_byte| message_byte.is_ascii_graphic() == true)
-        .collect();
-
-    clean_message
-}
-
-fn encode_message(cmd: &str) -> Result<Vec<u8>, Box<dyn error::Error + Send + Sync>> {
-    //println!("{:?}", cmd);
-    let message_str = cmd.to_string();
-    let mut message_bytes = ASCII
-        .encode(&message_str, EncoderTrap::Strict)
-        .map_err(|x| x.into_owned())?;
-    message_bytes.push('\r' as u8);
-
-    //Ok(String::from_utf8(string_size_bytes).unwrap())
-    Ok(message_bytes)
-}
-
 /// Inicia difusión de la URL donde el cliente podrá descargar el archivo mediante HTTP
 /// Valida que el archivo exista en ruta configurada en el server.toml
 /// Una vez comprobemos que hay un archivo, leemos los clientes de file_data
@@ -83,7 +59,7 @@ fn broadcast(connection: &Connection) {
 
             println!("trimed {}", trimmed);
 
-            let mut file = File::open(&fullpath.clone()).unwrap();
+            let file = File::open(&fullpath.clone()).unwrap();
             let file_size = file.metadata().unwrap().len();
 
             //println!("{}  [{:?} bytes]", style(trimmed).green(), style(file_size).cyan());

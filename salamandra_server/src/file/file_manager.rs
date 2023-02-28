@@ -2,7 +2,7 @@ use std::str;
 use std::{
     fs::{File, OpenOptions},
     io::{self, BufRead, BufReader, Write},
-    net::{Ipv4Addr, SocketAddr},
+    net::{SocketAddr},
     str::FromStr,
 };
 
@@ -62,6 +62,7 @@ fn get_all_clients_test() {
 
 #[test]
 fn save_client_test() {
+    use std::net::Ipv4Addr;
     let new_client = vec![
         SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
         SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 1, 1)), 8080),

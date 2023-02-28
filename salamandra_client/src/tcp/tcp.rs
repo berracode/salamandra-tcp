@@ -1,7 +1,6 @@
 use std::{net::TcpStream, io::{Write, Seek, BufRead}, 
-fs::File, error, time::Duration, thread, cmp::min};
+fs::File, time::Duration, thread, cmp::min};
 use std::str;
-use encoding::{EncoderTrap, all::ASCII, Encoding};
 use serde_json::json;
 
 

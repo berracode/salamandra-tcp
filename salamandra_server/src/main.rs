@@ -5,14 +5,10 @@ use salamandra_server::tcp::tcp;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use std::io::Result;
 use std::{
-    io::Write,
-    net::{TcpListener, TcpStream},
+    net::{TcpListener},
     thread,
 };
 
-#[cfg(windows)]
-extern crate winapi;
-use std::io::Error;
 
 async fn index(req: HttpRequest) -> Result<NamedFile> {
     let mut path = ".".to_string();
