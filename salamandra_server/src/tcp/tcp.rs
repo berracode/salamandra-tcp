@@ -1,19 +1,33 @@
-
-#[allow(unused_imports)]
-
-use std::{net::{TcpStream, Shutdown}, time::Duration, thread, io::{Write, Read}};
-use std::{str::{self, FromStr}, fs::{self, File}, error, net::SocketAddr, io::BufRead, sync::mpsc};
 use encoding::{all::ASCII, EncoderTrap, Encoding};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::{
+    error,
+    fs::{self, File},
+    io::BufRead,
+    net::SocketAddr,
+    str::{self, FromStr},
+    sync::mpsc,
+};
+#[allow(unused_imports)]
+use std::{
+    io::{Read, Write},
+    net::{Shutdown, TcpStream},
+    thread,
+    time::Duration,
+};
 
-use crate::{config::config::Config, file::file_manager, tcp::connection::{Connection, self}};
+use crate::{
+    config::config::Config,
+    file::file_manager,
+    tcp::connection::{self, Connection},
+};
 
 const BASE_URL: &str = "http://192.168.1.161:8080/";
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Request{
+struct Request {
     operation: String,
-    data: Option<String>
+    data: Option<String>,
 }
 
 enum Operation {
@@ -21,20 +35,22 @@ enum Operation {
     Broadcast,
 }
 
-
 fn my_decode_message(buf: &mut [u8]) -> String {
     let dirty_message: &str = str::from_utf8(buf).unwrap();
-    let clean_message: String = dirty_message.chars().filter(|message_byte|{
-        message_byte.is_ascii_graphic() == true 
-    }).collect();
+    let clean_message: String = dirty_message
+        .chars()
+        .filter(|message_byte| message_byte.is_ascii_graphic() == true)
+        .collect();
 
     clean_message
 }
 
-fn encode_message(cmd: &str) -> Result <Vec<u8>, Box<dyn error::Error + Send + Sync>> {
+fn encode_message(cmd: &str) -> Result<Vec<u8>, Box<dyn error::Error + Send + Sync>> {
     //println!("{:?}", cmd);
     let message_str = cmd.to_string();
-    let mut message_bytes = ASCII.encode(&message_str, EncoderTrap::Strict).map_err(|x| x.into_owned())?;
+    let mut message_bytes = ASCII
+        .encode(&message_str, EncoderTrap::Strict)
+        .map_err(|x| x.into_owned())?;
     message_bytes.push('\r' as u8);
 
     //Ok(String::from_utf8(string_size_bytes).unwrap())
@@ -47,19 +63,20 @@ fn encode_message(cmd: &str) -> Result <Vec<u8>, Box<dyn error::Error + Send + S
 /// enviar trama tcp con la url a cada cliente
 /// recibir trama de confirmación cuando el cliente termine de descarga el archivo
 /// responder a la CLI que ya el cliente x1 terminó
-fn broadcast(connection: &Connection){
+fn broadcast(connection: &Connection) {
+    let base_route = connection.base_route().unwrap();
 
     //validar que exista archivo en base_route
-    let mut file_to_send = "";
-    let mut fullpath = "".to_string();
+    let mut file_to_send = String::new();
+    let mut fullpath = String::new();
 
-    for entry in fs::read_dir(connection.base_route().unwrap()).unwrap() {
+    for entry in fs::read_dir(base_route).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
         if !path.is_dir() {
             //clean path from file name:
             fullpath = String::from(entry.path().to_string_lossy());
-            println!("fullpath {}",fullpath.clone() );
+            println!("fullpath {}", fullpath.clone());
             let filename = String::from(str::replace(&fullpath.clone(), "./shared", ""));
             println!("file name {}", filename);
             let trimmed = &filename[1..];
@@ -73,10 +90,9 @@ fn broadcast(connection: &Connection){
             //format data:
             let partial = format!("{}  [{:?} bytes]", trimmed, file_size);
             println!("{:?}", partial);
-
         }
     }
-    file_to_send = &fullpath[2..];
+    file_to_send = (&fullpath[2..]).to_string();
 
     println!("file_to_send {}", file_to_send);
 
@@ -90,17 +106,15 @@ fn broadcast(connection: &Connection){
     let mut threads = vec![];
     let (tx, rx) = mpsc::channel();
 
-    for client in clients {
-
+    for client in clients.clone() {
         let url_clone = url.clone();
         let config = config.clone();
         let tx_n = tx.clone();
 
-        let thread = thread::spawn( move || {
-
-            let stream = TcpStream::connect(client).unwrap(); //el cliente
+        let thread = thread::spawn(move || {
+            let stream = TcpStream::connect(client).unwrap(); //connection to the client
             let mut connection = Connection::new(stream, config);
-            connection.send_message(url_clone.as_str()); //enviadno url al cliente
+            connection.send_message(&url_clone); //send url to client
             let mut response_byte = connection.read_message().unwrap().to_vec();
             connection.reader.consume(response_byte.len());
             let response_from_client = connection::decode_message(&mut response_byte);
@@ -109,34 +123,35 @@ fn broadcast(connection: &Connection){
             if response_from_client.eq_ignore_ascii_case("downloaded") {
                 println!("Termina {:?}", connection.stream);
                 tx_n.send(connection.stream).unwrap();
-
+                drop(tx_n); 
             }
 
+            println!("termina .. {}", client);
         });
 
         threads.push(thread);
     }
 
-    while threads.len() > 0 {
+    /*while threads.len() > 0 {
         let cur_thread = threads.remove(0); // moves it into cur_thread
-        
-        for received in rx.recv() {
+
+        while let Ok(received) = rx.recv() {
             println!("termina: {:?}", received);
         }
         cur_thread.join().unwrap();
+    }*/
+    for i in clients {
+        println!("termina: {:?}, {}", rx.recv(), i);
     }
-
-    
+   
 
     println!("fin BROACASTING...")
 }
 
-
-pub fn process_connection(stream: TcpStream, config: Config){
+pub fn process_connection(stream: TcpStream, config: Config) {
     println!("New client connected from {:?}", stream);
 
-    let mut connection =  Connection::new(stream, config);
-
+    let mut connection = Connection::new(stream, config);
 
     let mut buf_vec: Vec<u8> = connection.read_message().unwrap().to_vec();
     connection.reader.consume(buf_vec.len());
@@ -150,28 +165,25 @@ pub fn process_connection(stream: TcpStream, config: Config){
     match parse_operation(&req.operation) {
         Some(Operation::ClientRecord) => {
             println!("Saving client in file...");
-            let new_client = SocketAddr::from_str(req.data.unwrap().as_str()).unwrap();        
-            let is_saved =  file_manager::save_client(new_client);
-    
+            let new_client = SocketAddr::from_str(req.data.unwrap().as_str()).unwrap();
+            let is_saved = file_manager::save_client(new_client);
+
             if is_saved == 1 {
                 response = "OK";
             }
-        },
+        }
         Some(Operation::Broadcast) => {
             broadcast(&connection);
             response = "OK";
-        },
+        }
         None => {
             println!("Invalid operation: {}", req.operation);
             response = "ERROR";
-        },
-
+        }
     }
-   
+
     connection.send_message(response);
     println!("A client has been finished {:?}", connection.stream)
-   
-
 }
 
 fn parse_operation(operation_str: &str) -> Option<Operation> {
@@ -181,7 +193,6 @@ fn parse_operation(operation_str: &str) -> Option<Operation> {
         _ => None,
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -193,8 +204,8 @@ mod tests {
 
     #[test]
     fn connection_broadcats_from_cli() {
-        let mut stream = TcpStream::connect("192.168.1.161:9123").unwrap();
-        let config= Config::new();
+        let stream = TcpStream::connect("192.168.1.161:9123").unwrap();
+        let config = Config::new();
 
         let mut connection = Connection::new(stream, config);
 
@@ -211,7 +222,6 @@ mod tests {
 
         assert_eq!(String::from("OK"), response_from_server);
     }
-
 
     #[test]
     fn connection_client_record() {
@@ -232,14 +242,12 @@ mod tests {
                     let text = from_utf8(&response_data).unwrap();
                     println!("Unexpected reply: {}", text);
                 }
-            },
+            }
             Err(e) => {
                 println!("Failed to receive data: {}", e);
             }
         }
 
-
         assert_eq!(1, response);
     }
-
 }

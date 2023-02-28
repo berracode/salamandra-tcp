@@ -1,17 +1,20 @@
-
 use actix_files::NamedFile;
 use salamandra_server::config::config::Config;
 use salamandra_server::tcp::tcp;
-#[allow(unused_imports)]
 
-use std::{net::{TcpListener, TcpStream}, thread, io::{ Write}};
-use std::io::{ Result};
-use actix_web::{HttpServer, App, Responder, HttpResponse, get, web, HttpRequest};
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use std::io::Result;
+use std::{
+    io::Write,
+    net::{TcpListener, TcpStream},
+    thread,
+};
 
+#[cfg(windows)]
+extern crate winapi;
+use std::io::Error;
 
-
-
-async fn index(req: HttpRequest) -> Result<NamedFile> {    
+async fn index(req: HttpRequest) -> Result<NamedFile> {
     let mut path = ".".to_string();
     path.push_str(req.path());
 
@@ -25,16 +28,24 @@ async fn hello() -> impl Responder {
     HttpResponse::Ok().body("Hello world!")
 }
 
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let config= Config::new();
+    let config = Config::new();
     let ip = config.get_ip();
     let _port = config.get_port();
 
-    thread::spawn(move|| {
+    start_tcp_server(config);
+
+    HttpServer::new(|| App::new().route("/shared/{filename:.*}", web::get().to(index)))
+        .bind((ip, 8080))?
+        .run()
+        .await
+}
+
+fn start_tcp_server(config: Config) {
+    thread::spawn(move || {
         let listener = TcpListener::bind(config.get_listener()).unwrap();
-    
+
         println!("listening started, ready to accept");
         for stream in listener.incoming() {
             let config = config.clone();
@@ -44,17 +55,5 @@ async fn main() -> std::io::Result<()> {
                 tcp::process_connection(stream, config);
             });
         }
-    
     });
-
-    HttpServer::new(|| {
-        App::new()
-            .route("/shared/{filename:.*}", web::get().to(index))
-    })
-    .bind((ip, 8080))?
-    .run()
-    .await
 }
-
-
-

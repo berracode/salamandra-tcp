@@ -1,10 +1,7 @@
-
 use std::{fs::File, io::Read};
 
 use local_ip_address::local_ip;
-use serde::{Serialize, Deserialize};
-
-
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
@@ -22,28 +19,25 @@ pub struct Server {
     pub name: Option<String>,
 
     pub base_route: Option<String>,
-    
-    pub buffer_size: usize
 
-
+    pub buffer_size: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Sock{
+pub struct Sock {
     pub ip: Option<String>,
-    pub port: Option<String>
+    pub port: Option<String>,
 }
 
 impl Config {
-
-    pub fn new() -> Config  {
+    pub fn new() -> Config {
         let mut file_content = String::new();
         let mut file = File::open("server.toml").unwrap();
         file.read_to_string(&mut file_content).unwrap();
         let mut config: Config = toml::from_str(&file_content).unwrap();
         let my_local_ip = local_ip().unwrap().to_string();
         config.server.listen.ip = Some(my_local_ip);
-        
+
         println!("config {:?}", config.get_listener());
         config
     }
@@ -73,7 +67,5 @@ impl Config {
         let port = server.listen.port.clone();
         let port = port.unwrap();
         port.parse::<u16>().unwrap()
-        
     }
-    
 }
