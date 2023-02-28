@@ -16,6 +16,12 @@ struct Request{
     data: Option<String>
 }
 
+enum Operation {
+    ClientRecord,
+    Broadcast,
+}
+
+
 fn my_decode_message(buf: &mut [u8]) -> String {
     let dirty_message: &str = str::from_utf8(buf).unwrap();
     let clean_message: String = dirty_message.chars().filter(|message_byte|{
@@ -141,22 +147,26 @@ pub fn process_connection(stream: TcpStream, config: Config){
     println!("req: {:?}", req);
     let mut response = "NO";
 
-    if req.operation.eq_ignore_ascii_case("client-record") {
-        println!("Saving client in file...");
- 
-        let new_client = SocketAddr::from_str(req.data.unwrap().as_str()).unwrap();        
-        let is_saved =  file_manager::save_client(new_client);
-
-        if is_saved == 1 {
+    match parse_operation(&req.operation) {
+        Some(Operation::ClientRecord) => {
+            println!("Saving client in file...");
+            let new_client = SocketAddr::from_str(req.data.unwrap().as_str()).unwrap();        
+            let is_saved =  file_manager::save_client(new_client);
+    
+            if is_saved == 1 {
+                response = "OK";
+            }
+        },
+        Some(Operation::Broadcast) => {
+            broadcast(&connection);
             response = "OK";
-        }
+        },
+        None => {
+            println!("Invalid operation: {}", req.operation);
+            response = "ERROR";
+        },
 
-    } else if req.operation.eq_ignore_ascii_case("broadcast") {
-        broadcast(&connection);
-        response = "OK";
-        
     }
-
    
     connection.send_message(response);
     println!("A client has been finished {:?}", connection.stream)
@@ -164,6 +174,13 @@ pub fn process_connection(stream: TcpStream, config: Config){
 
 }
 
+fn parse_operation(operation_str: &str) -> Option<Operation> {
+    match operation_str.to_lowercase().as_str() {
+        "client-record" => Some(Operation::ClientRecord),
+        "broadcast" => Some(Operation::Broadcast),
+        _ => None,
+    }
+}
 
 
 #[cfg(test)]
